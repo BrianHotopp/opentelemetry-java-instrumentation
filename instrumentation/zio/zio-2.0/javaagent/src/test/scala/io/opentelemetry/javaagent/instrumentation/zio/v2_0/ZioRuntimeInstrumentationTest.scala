@@ -9,6 +9,7 @@ import io.opentelemetry.instrumentation.testing.junit._
 import io.opentelemetry.instrumentation.testing.util.TelemetryDataUtil.orderByRootSpanName
 import io.opentelemetry.javaagent.instrumentation.zio.v2_0.ZioTestFixtures._
 import io.opentelemetry.sdk.testing.assertj.{SpanDataAssert, TraceAssert}
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.extension.RegisterExtension
 import org.junit.jupiter.api.{Test, TestInstance}
 
@@ -118,6 +119,19 @@ class ZioRuntimeInstrumentationTest {
           assertSpan(_.hasName("fiber_3_span_2").hasParent(trace.getSpan(0)))
         )
       }
+    )
+  }
+
+  @Test
+  def unsafeRunShouldNotDestroyCallerThreadContext(): Unit = {
+    val (traceIdBefore, traceIdAfter) = runUnsafeRunPreservesCallerContext()
+
+    assertEquals(
+      traceIdBefore,
+      traceIdAfter,
+      "Runtime.default.unsafe.run() should not destroy the calling thread's OTel context. " +
+        "onSuspend() calls Context.root().makeCurrent() when the fiber completes, " +
+        "which wipes pre-existing context on the calling thread."
     )
   }
 

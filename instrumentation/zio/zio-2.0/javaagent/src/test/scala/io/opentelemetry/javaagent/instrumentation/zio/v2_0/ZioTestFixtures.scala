@@ -122,6 +122,36 @@ object ZioTestFixtures {
     }
   }
 
+  /**
+   * Demonstrates that Runtime.default.unsafe.run() destroys the calling thread's
+   * OTel context. The onSuspend handler calls Context.root().makeCurrent() when
+   * the fiber completes, which wipes any pre-existing context on the calling thread.
+   *
+   * Returns (traceIdBefore, traceIdAfter) so the test can assert they match.
+   */
+  def runUnsafeRunPreservesCallerContext(): (String, String) = {
+    val span = tracer.spanBuilder("caller_span").startSpan()
+    val scope = span.makeCurrent()
+    try {
+      val traceIdBefore =
+        io.opentelemetry.api.trace.Span.current().getSpanContext.getTraceId
+
+      Unsafe.unsafe { implicit unsafe =>
+        zio.Runtime.default.unsafe
+          .run(ZIO.succeed("hello"))(Trace.empty, unsafe)
+          .getOrThrowFiberFailure()
+      }
+
+      val traceIdAfter =
+        io.opentelemetry.api.trace.Span.current().getSpanContext.getTraceId
+
+      span.end()
+      (traceIdBefore, traceIdAfter)
+    } finally {
+      scope.close()
+    }
+  }
+
   private val tracer: Tracer = GlobalOpenTelemetry.getTracer("test")
 
   private def childSpan(opName: String)(op: UIO[Unit]): UIO[Unit] =
